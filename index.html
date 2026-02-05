@@ -116,9 +116,9 @@
     </script>
 	<script>
 /**
- * FINAL WORKAROUND:
- * Reliably skip Slide 5 (index 4) once the iSpring player reports it as active.
- * This waits for the player AND listens for slide changes.
+ * Salvage mode:
+ * Auto-skip Slide 5 (index 4) AND Slide 6 (index 5) if the player gets stuck loading.
+ * This does not require iSpring access; it simply moves past the problematic slides.
  */
 (function () {
   function getPlayer() {
@@ -132,45 +132,55 @@
 
   function getIndex(p) {
     try {
-      if (p && typeof p.getCurrentSlideIndex === "function") return p.getCurrentSlideIndex();
-      if (p && typeof p.getCurrentSlideNumber === "function") return p.getCurrentSlideNumber() - 1;
+      if (p && typeof p.getCurrentSlideIndex === "function") return p.getCurrentSlideIndex(); // 0-based
+      if (p && typeof p.getCurrentSlideNumber === "function") return p.getCurrentSlideNumber() - 1; // convert
       if (typeof p.currentSlideIndex === "number") return p.currentSlideIndex;
     } catch (e) {}
     return null;
   }
 
-  function skipIfSlide5() {
-    var p = getPlayer();
-    if (!p) return;
-
-    var idx = getIndex(p);
-
-    // Slide 5 = index 4 (0-based)
-    if (idx === 4) {
-      try {
-        if (typeof p.next === "function") {
-          p.next();
-        } else if (typeof p.goToSlide === "function") {
-          p.goToSlide(5); // slide 6
-        }
-      } catch (e) {}
-    }
+  function goNext(p) {
+    try {
+      if (p && typeof p.next === "function") return p.next();
+      if (p && typeof p.goToSlide === "function") return p.goToSlide(getIndex(p) + 1);
+    } catch (e) {}
   }
 
-  // 1) Poll during initialization
+  // If we land on slide 5 or 6, give it a moment to load; if still there, skip forward.
+  function armSkipFor(idxToSkip, delayMs) {
+    setTimeout(function () {
+      var p = getPlayer();
+      var idx = getIndex(p);
+      if (idx === idxToSkip) {
+        goNext(p);
+      }
+    }, delayMs);
+  }
+
+  function checkAndArm() {
+    var p = getPlayer();
+    var idx = getIndex(p);
+
+    // Slide 5 (index 4) — skip quickly
+    if (idx === 4) armSkipFor(4, 800);
+
+    // Slide 6 (index 5) — allow a bit more time, then skip if still stuck
+    if (idx === 5) armSkipFor(5, 1500);
+  }
+
+  // Poll during initialization and navigation
   var tries = 0;
   var poller = setInterval(function () {
     tries++;
-    skipIfSlide5();
-
-    if (tries > 60) clearInterval(poller); // ~30 seconds max
+    checkAndArm();
+    if (tries > 120) clearInterval(poller); // stop after ~60s
   }, 500);
 
-  // 2) Also hook slide-change events if available
+  // Hook slide-change event if available
   try {
     var p = getPlayer();
     if (p && typeof p.on === "function") {
-      p.on("slideChanged", skipIfSlide5);
+      p.on("slideChanged", checkAndArm);
     }
   } catch (e) {}
 })();
@@ -178,3 +188,4 @@
 </body>
 
 </html>
+
