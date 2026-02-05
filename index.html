@@ -114,5 +114,67 @@
 				start();
 		})());
     </script>
+	<script>
+/**
+ * FINAL WORKAROUND:
+ * Reliably skip Slide 5 (index 4) once the iSpring player reports it as active.
+ * This waits for the player AND listens for slide changes.
+ */
+(function () {
+  function getPlayer() {
+    try {
+      if (window.PresentationPlayer && typeof PresentationPlayer.getPlayer === "function") {
+        return PresentationPlayer.getPlayer();
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function getIndex(p) {
+    try {
+      if (p && typeof p.getCurrentSlideIndex === "function") return p.getCurrentSlideIndex();
+      if (p && typeof p.getCurrentSlideNumber === "function") return p.getCurrentSlideNumber() - 1;
+      if (typeof p.currentSlideIndex === "number") return p.currentSlideIndex;
+    } catch (e) {}
+    return null;
+  }
+
+  function skipIfSlide5() {
+    var p = getPlayer();
+    if (!p) return;
+
+    var idx = getIndex(p);
+
+    // Slide 5 = index 4 (0-based)
+    if (idx === 4) {
+      try {
+        if (typeof p.next === "function") {
+          p.next();
+        } else if (typeof p.goToSlide === "function") {
+          p.goToSlide(5); // slide 6
+        }
+      } catch (e) {}
+    }
+  }
+
+  // 1) Poll during initialization
+  var tries = 0;
+  var poller = setInterval(function () {
+    tries++;
+    skipIfSlide5();
+
+    if (tries > 60) clearInterval(poller); // ~30 seconds max
+  }, 500);
+
+  // 2) Also hook slide-change events if available
+  try {
+    var p = getPlayer();
+    if (p && typeof p.on === "function") {
+      p.on("slideChanged", skipIfSlide5);
+    }
+  } catch (e) {}
+})();
+</script>
 </body>
+
 </html>
